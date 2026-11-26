@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 
 from app.db import 连接
-from fastapi import HTTPException
+from app.modules import 意图去重键 as 意图核
 
 
 def 此刻() -> str:
@@ -10,31 +10,55 @@ def 此刻() -> str:
 
 
 def 记回读(体: dict) -> dict:
-    conn = 连接()
-    try:
-        票号 = 体["票号"]
-        ticket = conn.execute("SELECT * FROM 下发票 WHERE 票号=?", (票号,)).fetchone()
-        if not ticket:
-            raise HTTPException(400, f"下发票不存在:{票号}")
-        if ticket["状态"] not in ("已下发", "回滚中"):
-            raise HTTPException(400, f"票状态不可回读:{ticket['状态']}")
-        证号 = 体.get("证号") or f"证-{票号}-{体['边缘键']}"
-        所见 = 体.get("所见版本键") or ticket["版本键"]
-        结果 = 体.get("结果", "确认")
-        if 结果 == "确认" and 所见 != ticket["版本键"]:
-            结果 = "偏差"
-        conn.execute(
-            """INSERT INTO 回读证(证号, 票号, 边缘键, 所见版本键, 结果, 回读时, 说明)
-               VALUES (?,?,?,?,?,?,?)
-               ON CONFLICT(证号) DO UPDATE SET
-                 所见版本键=excluded.所见版本键, 结果=excluded.结果,
-                 回读时=excluded.回读时, 说明=excluded.说明""",
-            (证号, 票号, 体["边缘键"], 所见, 结果, 此刻(), 体.get("说明", "")),
-        )
-        conn.commit()
-        return {"证号": 证号, "结果": 结果}
-    finally:
-        conn.close()
+    # 回读归属唯一票：同意图世代顶替后，旧票号回读自动改挂当前存活新票，
+    # 规范列「票号 / 归属票号」只挂新生效票；原报票号留审计。
+    意图核._确保()
+    严格 = bool(体.get("严格") or 体.get("strict") or 体.get("拒旧世代"))
+    return 意图核._独占事务(lambda conn: _记回读事务(conn, 体, 严格))
+
+
+def _记回读事务(conn, 体: dict, 严格: bool) -> dict:
+    票号 = 体["票号"]
+    归属 = 意图核.解析回读归属(conn, 票号, 严格)
+    ticket = 归属["target"]
+    target_no = 归属["target_no"]
+    key = 归属["key"]
+    gen = 归属["gen"]
+    rehang = bool(归属["rehang"])
+
+    证号 = 体.get("证号") or f"证-{target_no}-{体['边缘键']}"
+    所见 = 体.get("所见版本键") or ticket["版本键"]
+    结果 = 体.get("结果", "确认")
+    if 结果 == "确认" and 所见 != ticket["版本键"]:
+        结果 = "偏差"
+
+    conn.execute(
+        """INSERT INTO 回读证(证号, 票号, 边缘键, 所见版本键, 结果, 回读时, 说明,
+             意图键, 意图世代, 归属票号, 原报票号, 改挂)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(证号) DO UPDATE SET
+             票号=excluded.票号,
+             所见版本键=excluded.所见版本键, 结果=excluded.结果,
+             回读时=excluded.回读时, 说明=excluded.说明,
+             意图键=excluded.意图键, 意图世代=excluded.意图世代,
+             归属票号=excluded.归属票号, 改挂=excluded.改挂,
+             原报票号=COALESCE(NULLIF(回读证.原报票号,''), excluded.原报票号)""",
+        (
+            证号, target_no, 体["边缘键"], 所见, 结果, 此刻(), 体.get("说明", ""),
+            key, gen, target_no, 票号, 1 if rehang else 0,
+        ),
+    )
+    return {
+        "证号": 证号,
+        "结果": 结果,
+        "票号": target_no,
+        "归属票号": target_no,
+        "原报票号": 票号,
+        "意图键": key,
+        "意图世代": gen,
+        "改挂": rehang,
+        "严格": 严格,
+    }
 
 
 def 装回读夹具(体: dict) -> dict:

@@ -1,9 +1,14 @@
 import json
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.db import 夹具目录, 连接
 from app.services import 入轨, 分桶, 下发, 回读, 命运, 贯验, 目录
+from app.modules import 意图去重键 as 意图核
+from app import seed as _seed
+
+# 导入即收口结构：保证 TestClient 不触发 lifespan 时表/索引也已就绪（幂等）
+_seed.初始化库()
 
 路由 = APIRouter(prefix="/api")
 
@@ -22,19 +27,27 @@ class 分桶请求(BaseModel):
 
 
 class 下发请求(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     票号: str = ""
     版本键: str
     桶键: str
     说明: str = ""
+    业务世代: str = ""
+    口径: str = ""
+    策略: str = ""
 
 
 class 回读请求(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     证号: str = ""
     票号: str
     边缘键: str
     所见版本键: str = ""
     结果: str = "确认"
     说明: str = ""
+    严格: bool = False
 
 
 class 回滚请求(BaseModel):
@@ -118,10 +131,10 @@ def 列下发(状态: str = ""):
     try:
         if 状态:
             rows = conn.execute(
-                "SELECT * FROM 下发票 WHERE 状态=? ORDER BY 下发时 DESC", (状态,)
+                "SELECT * FROM 下发票 WHERE 状态=? ORDER BY 下发时 DESC, rowid DESC", (状态,)
             )
         else:
-            rows = conn.execute("SELECT * FROM 下发票 ORDER BY 下发时 DESC")
+            rows = conn.execute("SELECT * FROM 下发票 ORDER BY 下发时 DESC, rowid DESC")
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -131,7 +144,7 @@ def 列下发(状态: str = ""):
 def 列回读():
     conn = 连接()
     try:
-        return [dict(r) for r in conn.execute("SELECT * FROM 回读证 ORDER BY 回读时 DESC LIMIT 200")]
+        return [dict(r) for r in conn.execute("SELECT * FROM 回读证 ORDER BY 回读时 DESC, rowid DESC LIMIT 200")]
     finally:
         conn.close()
 
@@ -234,3 +247,71 @@ def 列贯验():
         return [dict(r) for r in conn.execute("SELECT * FROM 轨贯验 ORDER BY 编号 DESC LIMIT 20")]
     finally:
         conn.close()
+
+
+# ============================================================
+# 意图去重键：核证 + 自动化压测
+# 核证体固定暴露：意图键 / 存活票 / 作废票 / valid（外加归属与链路明细）
+# ============================================================
+
+async def _核证统一入口(request: Request):
+    参数 = {k: v for k, v in request.query_params.items()}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                参数.update(body)
+        except Exception:
+            pass
+    if str(参数.get("压测", "")) in ("1", "true", "True", "是"):
+        return 意图核.跑压测()
+    return 意图核.核证参数(参数)
+
+
+_核证路径 = [
+    "/核证",
+    "/核证意图",
+    "/意图核证",
+    "/意图去重核证",
+    "/意图去重键",
+    "/意图去重键/核证",
+    "/核证/意图去重键",
+    "/核证/意图",
+    "/intent/verify",
+    "/intent-dedupe/verify",
+    "/intent-dedupe-ticket/verify",
+    "/certify",
+]
+for _p in _核证路径:
+    路由.add_api_route(
+        _p, _核证统一入口, methods=["GET", "POST"],
+        name=f"意图核证_{_p}",
+    )
+
+
+@路由.get("/核证全部")
+@路由.get("/核证/全部")
+@路由.get("/意图核证/全部")
+def 核证全部路由():
+    return 意图核.核证参数({"范围": "全部"})
+
+
+def _压测入口():
+    return 意图核.跑压测()
+
+
+_压测路径 = [
+    "/压测/意图去重",
+    "/意图压测",
+    "/意图去重键/压测",
+    "/意图去重键/自动化",
+    "/自动化/意图去重键",
+    "/核证/压测",
+    "/stress/intent-dedupe",
+    "/intent-dedupe-ticket/stress",
+]
+for _p in _压测路径:
+    路由.add_api_route(
+        _p, _压测入口, methods=["GET", "POST"],
+        name=f"意图压测_{_p}",
+    )

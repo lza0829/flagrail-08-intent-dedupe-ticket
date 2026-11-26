@@ -293,6 +293,59 @@ td code, .mono {
 .徽章.通 { background: var(--通底); color: var(--通) }
 .徽章.败 { background: var(--败底); color: var(--败) }
 .徽章.信 { background: var(--信底); color: var(--信) }
+.徽章.警 { background: var(--警底); color: var(--警) }
+
+/* 意图去重键：世代 / 作废链路 / 核证面板 */
+.世代chip {
+  display: inline-block;
+  min-width: 2.1rem;
+  text-align: center;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--线);
+  border-radius: 999px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--墨);
+  background: rgba(255, 255, 255, 0.6);
+}
+.链路 { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--淡); line-height: 1.5 }
+.链路 .箭 { color: var(--警); font-weight: 700; padding: 0 0.2rem }
+.意图键码 { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--信); word-break: break-all }
+.核证卡 {
+  margin: 0.6rem 0 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--线弱);
+  border-left: 4px solid var(--信);
+  border-radius: 6px;
+  background: var(--块);
+}
+.核证卡.坏 { border-left-color: var(--败) }
+.核证网格 { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; margin: 0.5rem 0; font-size: 0.82rem }
+.核证网格 b { font-family: "IBM Plex Mono", monospace }
+.mini票 {
+  display: inline-block;
+  margin: 0.1rem 0.25rem 0.1rem 0;
+  padding: 0.08rem 0.4rem;
+  border-radius: 3px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+}
+.mini票.活 { background: var(--通底); color: var(--通) }
+.mini票.废 { background: var(--警底); color: var(--警); text-decoration: line-through }
+.mini票.无 { color: var(--淡); font-style: italic }
+.表单行 { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.5rem 0 }
+.表单行 input {
+  padding: 0.42rem 0.6rem;
+  border: 1px solid var(--线);
+  border-radius: 4px;
+  font-size: 0.84rem;
+  min-width: 13rem;
+  background: rgba(255,255,255,0.85);
+  color: var(--墨);
+}
+.表单行 input:focus { outline: 2px solid var(--信亮); border-color: var(--信) }
+.并行结果 { margin: 0.4rem 0; font-family: "IBM Plex Mono", monospace; font-size: 0.76rem; color: var(--淡) }
 
 @keyframes brand-in {
   from { opacity: 0; letter-spacing: 0.4em; transform: translateY(8px) }

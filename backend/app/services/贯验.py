@@ -36,6 +36,22 @@ def 跑贯验() -> dict:
                 (r["票号"],),
             ).fetchone():
                 问题.append(f"回滚无命运:{r['票号']}")
+        # 意图去重键：同一意图至多一张有效已下发（禁止双活）
+        for r in conn.execute(
+            """SELECT 意图键, COUNT(*) AS c FROM 下发票
+               WHERE 状态='已下发' AND COALESCE(意图键,'')<>''
+               GROUP BY 意图键 HAVING c > 1"""
+        ):
+            问题.append(f"意图双活:{r['意图键']}x{r['c']}")
+        # 回读归属：挂在规范票号上的归属票必须是当前已下发存活票
+        for r in conn.execute(
+            """SELECT h.证号, COALESCE(NULLIF(h.归属票号,''), h.票号) AS 归属,
+                      i.状态 AS 状态
+               FROM 回读证 h LEFT JOIN 下发票 i ON i.票号 = COALESCE(NULLIF(h.归属票号,''), h.票号)
+               WHERE i.票号 IS NOT NULL"""
+        ):
+            if r["状态"] not in ("已下发", "已回滚", "回滚中"):
+                问题.append(f"回读挂非存活票:{r['证号']}->{r['归属']}({r['状态']})")
 
         通过 = 1 if not 问题 else 0
         说明 = "齐" if 通过 else "; ".join(问题)

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Frontend build
+frontend/dist/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime data / local databases
+backend/data/
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs / env
+*.log
+npm-debug.log*
+.env
+.DS_Store
